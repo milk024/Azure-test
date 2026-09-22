@@ -1,0 +1,33 @@
+# --- Terraform ---
+*.tfstate
+*.tfstate.*
+.terraform/
+tfplan
+*.tfplan
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+# .terraform.lock.hcl is intentionally NOT ignored (should be committed)
+
+# --- Secrets / keys ---
+*.pem
+*.key
+
+# --- Source archives (azure-fund/ is the extracted copy) ---
+azure-fund.zip
+
+# --- Build artifacts (Java/Maven, .NET) ---
+target/
+bin/
+obj/
+*.class
+
+# --- OS / editor ---
+.DS_Store
+.idea/
+*.iml
