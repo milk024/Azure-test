@@ -23,7 +23,7 @@ module "network" {
   location            = azurerm_resource_group.gallery.location
   resource_group_name = azurerm_resource_group.gallery.name
   ssh_source_cidr     = var.my_ip_cidr
-  app_port            = 8080
+  app_port            = var.app_port
 }
 
 # --- Virtual machine ---
@@ -53,5 +53,37 @@ resource "azurerm_linux_virtual_machine" "gallery" {
     offer     = "ubuntu-24_04-lts"
     sku       = "server"
     version   = "latest"
+  }
+
+  connection {
+    type        = "ssh"
+    host        = module.network.public_ip_address
+    user        = var.admin_username
+    private_key = tls_private_key.gallery.private_key_pem
+  }
+
+  # Create the remote workspace before copying source into it.
+  provisioner "remote-exec" {
+    inline = ["mkdir -p /home/${var.admin_username}/workspace/gallery-spring-boot"]
+  }
+
+  # Copy the local source tree to the VM — no git/GitHub account involved.
+  # (Terraform's built-in SCP communicator doesn't expand "~", so use an absolute path.)
+  provisioner "file" {
+    source      = "${path.module}/${var.app_source_path}/"
+    destination = "/home/${var.admin_username}/workspace/gallery-spring-boot"
+  }
+
+  # Build with Maven and register as a systemd service.
+  provisioner "remote-exec" {
+    inline = [
+      "sudo apt-get update && sudo apt-get install -y openjdk-21-jdk",
+      "cd /home/${var.admin_username}/workspace/gallery-spring-boot && chmod +x ./mvnw && ./mvnw clean package -DskipTests -Dbuild.finalName=gallery",
+      "sudo mkdir -p /opt/gallery && sudo chown $USER:$USER /opt/gallery",
+      "mv /home/${var.admin_username}/workspace/gallery-spring-boot/target/gallery.jar /opt/gallery",
+      "sudo tee /etc/systemd/system/gallery.service > /dev/null <<'EOF'\n[Unit]\nDescription=Gallery Spring Boot Application\nAfter=network.target\n\n[Service]\nType=simple\nUser=${var.admin_username}\nWorkingDirectory=/opt/gallery\nExecStart=/usr/bin/java -jar /opt/gallery/gallery.jar --spring.profiles.active=dev\nRestart=on-failure\nStandardOutput=journal\nStandardError=journal\nSyslogIdentifier=gallery\n\n[Install]\nWantedBy=multi-user.target\nEOF",
+      "sudo systemctl daemon-reload",
+      "sudo systemctl enable --now gallery",
+    ]
   }
 }
